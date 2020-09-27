@@ -1,0 +1,752 @@
+ENABLE_FAKE_SOUND = 0
+
+' All arrays used in this application start at 0.
+
+' Stack
+chip8Stack = "chip8"
+
+' Display variables
+displayWidth = 64
+displayHeight = 32
+displayMultiplier = 16
+colorOn = "white"
+colorOff = "black"
+
+' Hex
+hex[0] = "0"
+hex[1] = "1"
+hex[2] = "2"
+hex[3] = "3"
+hex[4] = "4"
+hex[5] = "5"
+hex[6] = "6"
+hex[7] = "7"
+hex[8] = "8"
+hex[9] = "9"
+hex[10] = "A"
+hex[11] = "B"
+hex[12] = "C"
+hex[13] = "D"
+hex[14] = "E"
+hex[15] = "F"
+
+' Emulator variables
+'------------------------------
+' V[x] = Vx register
+'     0 <= Vx <= FF
+'     0 <= x <= F
+'------------------------------
+' display[x][y] = 1 if pixel at position (x,y) is on, otherwise 0
+'     0 <= x < displayWidth
+'     0 <= y < displayHeight
+'     0 <= display[x][y] <= 1
+'------------------------------
+' PC = program counter
+'     0 <= PC <= FFF
+'------------------------------
+' memPt = memory pointer
+'     0 <= memPt <= FFF
+'------------------------------
+' memory[loc] = 8-bit value at memory location loc
+'     0 <= loc <= FFF
+'     0 <= memory[loc] <= FF
+'------------------------------
+delayTimer = 0
+emulationSpeed = 10
+waitingForKey = 0
+soundTimer = 0
+memPt = 512
+PC = -1
+For i = 0 To 15
+  V[i] = 0
+  keys[i] = 0
+EndFor
+For x = 0 To displayWidth - 1
+  For y = 0 To displayHeight - 1
+    display[x][y] = 0
+  EndFor
+EndFor
+For i = 0 To 4095
+  memory[i] = 0
+EndFor
+
+' Zero
+memory[0] = 240
+memory[1] = 144
+memory[2] = 144
+memory[3] = 144
+memory[4] = 240
+
+' One
+memory[5] = 32
+memory[6] = 96
+memory[7] = 32
+memory[8] = 32
+memory[9] = 112
+
+' Two 
+memory[10] = 240
+memory[11] = 16
+memory[12] = 240
+memory[13] = 128
+memory[14] = 240
+
+' Three
+memory[15] = 240
+memory[16] = 16
+memory[17] = 240
+memory[18] = 16
+memory[19] = 240
+
+' Four
+memory[20] = 144
+memory[21] = 144
+memory[22] = 240
+memory[23] = 16
+memory[24] = 16
+
+' Five
+memory[25] = 240
+memory[26] = 128
+memory[27] = 240
+memory[28] = 16
+memory[29] = 240
+
+' Six
+memory[30] = 240
+memory[31] = 128
+memory[32] = 240
+memory[33] = 144
+memory[34] = 240
+
+' Seven
+memory[35] = 240
+memory[36] = 16
+memory[37] = 32
+memory[38] = 64
+memory[39] = 64
+
+' Eight
+memory[40] = 240
+memory[41] = 144
+memory[42] = 240
+memory[43] = 144
+memory[44] = 240
+
+' Nine
+memory[45] = 240
+memory[46] = 144
+memory[47] = 240
+memory[48] = 16
+memory[49] = 240
+
+' A
+memory[50] = 240
+memory[51] = 144
+memory[52] = 240
+memory[53] = 144
+memory[54] = 144
+
+' B
+memory[55] = 224
+memory[56] = 144
+memory[57] = 224
+memory[58] = 144
+memory[59] = 224
+
+' C
+memory[60] = 240
+memory[61] = 128
+memory[62] = 128
+memory[63] = 128
+memory[64] = 240
+
+' D
+memory[65] = 224
+memory[66] = 144
+memory[67] = 144
+memory[68] = 144
+memory[69] = 224
+
+' E
+memory[70] = 240
+memory[71] = 128
+memory[72] = 240
+memory[73] = 128
+memory[74] = 240
+
+' F
+memory[75] = 240
+memory[76] = 128
+memory[77] = 240
+memory[78] = 128
+memory[79] = 128
+
+' Keys
+'------------------------------
+' keymap[char] = x
+' keys[x] = isPressed
+'     0 <= x <= F
+'     strlen(char) == 1
+'     0 <= isPressed <= 1
+'------------------------------
+keymap["D1"] = 1
+keymap["D2"] = 2
+keymap["D3"] = 3
+keymap["D4"] = 12
+keymap["Q"] = 4
+keymap["W"] = 5
+keymap["E"] = 6
+keymap["R"] = 13
+keymap["A"] = 7
+keymap["S"] = 8
+keymap["D"] = 9
+keymap["F"] = 14
+keymap["Z"] = 10
+keymap["X"] = 0
+keymap["C"] = 11
+keymap["V"] = 15
+For i = 0 To 15
+  keys[i] = 0
+EndFor
+
+' Keys
+'---------------------------
+
+' Helper functions
+result = 0
+arg1 = 0
+arg2 = 0
+
+' 00100101
+' 10001110
+'-------------
+' 10101111
+Sub BitwiseOR
+  _input1 = arg1
+  _x = 1
+  _result = 0
+  _input2 = arg2
+  While (_input1 > 0) Or (_input2 > 0)
+    If (Math.Remainder(_input1, 2) = 1) Or (Math.Remainder(_input2, 2) = 1) Then
+      _result = _result + _x
+    EndIf
+    _x = _x * 2
+    arg1 = _input1
+    ShiftRight()
+    _input1 = result
+    arg1 = _input2
+    ShiftRight()
+    _input2 = result
+  EndWhile
+  result = _result
+EndSub
+
+' 00100101
+' 10001110
+'-------------
+' 10101011
+Sub BitwiseXOR
+  _input1 = arg1
+  _x = 1
+  _result = 0
+  _input2 = arg2
+  While (_input1 > 0) Or (_input2 > 0)
+    If (Math.Remainder(_input1, 2) <> Math.Remainder(_input2, 2)) Then
+      _result = _result + _x
+    EndIf
+    _x = _x * 2
+    arg1 = _input1
+    ShiftRight()
+    _input1 = result
+    arg1 = _input2
+    ShiftRight()
+    _input2 = result
+  EndWhile
+  result = _result
+EndSub
+
+' 00100101
+' 10001110
+'-------------
+' 00000100
+Sub BitwiseAND
+  _input1 = arg1
+  _x = 1
+  _result = 0
+  _input2 = arg2
+  While (_input1 > 0) Or (_input2 > 0)
+    If (Math.Remainder(_input1, 2) = 1) And (Math.Remainder(_input2, 2) = 1) Then
+      _result = _result + _x
+    EndIf
+    _x = _x * 2
+    arg1 = _input1
+    ShiftRight()
+    _input1 = result
+    arg1 = _input2
+    ShiftRight()
+    _input2 = result
+  EndWhile
+  result = _result
+EndSub
+
+' 00100101 --> 01001010
+Sub ShiftLeft
+  result = arg1 * 2
+EndSub
+
+' 00100101 --> 00010010
+Sub ShiftRight
+  result = Math.Floor(arg1 / 2)
+EndSub
+
+' Shows an error and ends the program
+Sub Die
+  GraphicsWindow.ShowMessage(arg1, "Fatal error")
+  Program.End()
+EndSub
+
+' 00100101 --> [0, 0, 1, 0, 0, 1, 0, 1]
+' NEVER USED
+Sub Make8BitArray
+  If (arg1 > 255) Or (arg1 < 0) Then
+    arg1 = "Input value ("+arg1+") doesn't fit in an 8-bit integer"
+    Die()
+  EndIf
+  _input = arg1
+  For i = 0 To 7
+    arg1 = _input
+    arg2 = 128
+    BitwiseAND()
+    If result = 128 Then
+      resultArray[i] = 1
+    Else
+      resultArray[i] = 0
+    EndIf
+    arg1 = _input
+    ShiftLeft()
+    _input = result
+  EndFor
+EndSub
+
+' The function that initializes the graphics window
+Sub Initialize
+  ' Make sure the window isn't displayed before it's ready
+  GraphicsWindow.Hide()
+  
+  ' Prepare the window itself
+  GraphicsWindow.Width = displayWidth * displayMultiplier
+  GraphicsWindow.Height = displayHeight * displayMultiplier
+  GraphicsWindow.Title = "Chip-8 Emulator ("+(emulationSpeed*60)+"Hz)"
+  GraphicsWindow.CanResize = 0
+  GraphicsWindow.KeyDown = OnKeyDown
+  GraphicsWindow.KeyUp = OnKeyUp
+  textBox = Controls.AddTextBox(20, 50)
+  Controls.SetTextBoxText(textBox, "C:\path\to\encoded\program")
+  Controls.SetSize(textBox, (displayWidth * displayMultiplier) - 40, 20)
+  startButton = Controls.AddButton("Start Game", 20, 70)
+  configButtons[0] = Controls.AddButton("[x] Sprites should wrap (Disable for BLITZ)", 20, 120)
+  configButtons[1] = Controls.AddButton("[_] FX55 and FX65 should modify I", 20, 150)
+  For i=0 To Array.GetItemCount(configButtons)-1
+    Controls.SetSize(configButtons[i], (displayWidth * displayMultiplier) - 40, 30)
+  EndFor
+  Controls.ButtonClicked = OnButtonClick
+  
+  ' Show the window
+  GraphicsWindow.Show()
+EndSub
+
+' KeyDown event
+Sub OnKeyDown
+  If PC <> -1 Then
+    pressedKey = GraphicsWindow.LastKey
+    If Array.ContainsIndex(keymap, pressedKey) Then
+      keys[keymap[pressedKey]] = 1
+    ElseIf pressedKey = "Up" Then
+      If emulationSpeed < 5000 Then
+        emulationSpeed = emulationSpeed + 3
+      EndIf
+    ElseIf pressedKey = "Down" Then
+      If emulationSpeed > 3 Then
+        emulationSpeed = emulationSpeed - 3
+      EndIf
+    EndIf
+    GraphicsWindow.Title = "Chip-8 Emulator ("+(emulationSpeed*60)+"Hz)"
+  EndIf
+EndSub
+
+' KeyUp event
+Sub OnKeyUp
+  If PC <> -1 Then
+    pressedKey = GraphicsWindow.LastKey
+    If Array.ContainsIndex(keymap, pressedKey) Then
+      keys[keymap[pressedKey]] = 0
+    EndIf
+  EndIf
+EndSub
+
+' ButtonClicked event
+Sub OnButtonClick
+  If PC <> -1 Then
+    arg1 = "Received a button event after starting the game"
+    Die()
+  EndIf
+  If Controls.LastClickedButton = startButton Then
+    filePath = Controls.GetTextBoxText(textBox)
+    gameData = File.ReadContents(filePath)
+    finalByte = 0
+    If Text.GetLength(gameData) = 0 Then
+      GraphicsWindow.ShowMessage("Read 0 bytes. Make sure the path is correct, then try again.", "Read Error")
+    Else
+      For i = 1 To Text.GetLength(gameData)
+        gameByte = Text.GetSubText(gameData, i, 1)
+        finalByte = finalByte + Text.GetCharacterCode(gameByte)
+        If Text.GetCharacterCode(gameByte) <> 127 Then
+          If finalByte > 255 Then
+            arg1 = "Encountered an out-of-range value while decoding the input file."
+            Die()
+          EndIf
+          If memPt > 4095 Then
+            arg1 = "The input file is bigger than 3584 bytes when decoded."
+            Die()
+          EndIf
+          'GraphicsWindow.ShowMessage("Writing byte " + finalByte, "Debug")
+          memory[memPt] = finalByte
+          'GraphicsWindow.ShowMessage("Re-read as " + memory[memPt], "Debug")
+          memPt = memPt + 1
+          'GraphicsWindow.ShowMessage("I is now " + memPt, "Debug")
+          finalByte = 0
+        EndIf
+      EndFor
+      'GraphicsWindow.ShowMessage(File.LastError, "Error")
+      Controls.Remove(startButton)
+      Controls.Remove(textBox)
+      shouldWrap = 0
+      If Text.StartsWith(Controls.GetButtonCaption(configButtons[0]), "[x") Then
+        shouldWrap = 1
+      EndIf
+      saveAndLoadModifiesI = 0
+      If Text.StartsWith(Controls.GetButtonCaption(configButtons[1]), "[x") Then
+        saveAndLoadModifiesI = 1
+      EndIf
+      For i=0 To Array.GetItemCount(configButtons)-1
+        Controls.Remove(configButtons[i])
+      EndFor
+      GraphicsWindow.BackgroundColor = "gray"
+      GraphicsWindow.BrushColor = "black"
+      GraphicsWindow.FillRectangle(0, 0, displayMultiplier * displayWidth, displayMultiplier * displayHeight)
+      PC = 512
+      Timer.Interval = 1000.0 / 60.0
+      Timer.Tick = OnTimerTick
+      Timer.Resume()
+    EndIf
+  Else
+    buttonText = Controls.GetButtonCaption(Controls.LastClickedButton)
+    newButtonText = Text.GetSubTextToEnd(buttonText, 3)
+    If Text.StartsWith(buttonText, "[x") Then
+      newButtonText = Text.Append("[_", newButtonText)
+    Else
+      newButtonText = Text.Append("[x", newButtonText)
+    EndIf
+    Controls.SetButtonCaption(Controls.LastClickedButton, newButtonText)
+  EndIf
+EndSub
+
+Sub RedrawScreen
+  GraphicsWindow.BrushColor = colorOff
+  GraphicsWindow.FillRectangle(0, 0, displayMultiplier * displayWidth, displayMultiplier * displayHeight)
+  For x=0 To displayWidth-1
+    For y=0 To displayHeight-1
+      If display[x][y] = 1 Then 
+        GraphicsWindow.BrushColor = colorOn
+        GraphicsWindow.FillRectangle(x * displayMultiplier, y * displayMultiplier, displayMultiplier, displayMultiplier)
+      EndIf
+    EndFor
+  EndFor
+EndSub
+
+Sub IllegalInstruction
+  arg1 = Text.Append(Text.Append(Text.Append(Text.Append("Illegal instruction: ", hex[n1]), hex[n2]), hex[n3]), hex[n4])
+  Die()
+EndSub
+
+' Timer tick event -- Execute 
+Sub OnTimerTick
+  Timer.Pause()
+  If delayTimer > 0 Then
+    delayTimer = delayTimer - 1
+  EndIf
+  If soundTimer > 0 Then
+    soundTimer = soundTimer - 1
+    If soundTimer = 0 Then
+      If ENABLE_FAKE_SOUND Then
+        colorOn = "white"
+        colorOff = "black"
+        RedrawScreen()
+      EndIf
+    EndIf
+  EndIf
+  If waitingForKey <> 0 Then
+    For i = 0 To 15
+      If keys[i] = 1 Then
+        V[waitingForKey-1] = i
+        waitingForKey = 0
+        i = 16
+      EndIf
+    EndFor
+  EndIf
+  If waitingForKey = 0 Then
+    For counter = 1 To emulationSpeed
+      ' Fetch
+      PC = Math.Remainder(PC, 4096)
+      n1 = Math.Floor(memory[PC] / 16)
+      n2 = Math.Remainder(memory[PC], 16)
+      PC = Math.Remainder(PC+1, 4096)
+      n3 = Math.Floor(memory[PC] / 16)
+      n4 = Math.Remainder(memory[PC], 16)
+      PC = Math.Remainder(PC+1, 4096)
+      
+      ' Execute
+      If n1 = 0 And n2 = 0 And n3 = 14 Then
+        ' 00E?
+        If n4 = 14 Then
+          ' 00EE - Return from subroutine
+          PC = Stack.PopValue(chip8Stack)
+        ElseIf n4 = 0 Then
+          ' 00E0 - Clear display
+          For x = 0 To displayWidth - 1
+            For y = 0 To displayHeight - 1
+              display[x][y] = 0
+            EndFor
+          EndFor
+          GraphicsWindow.BrushColor = colorOff
+          GraphicsWindow.FillRectangle(0, 0, displayMultiplier * displayWidth, displayMultiplier * displayHeight)
+        Else
+          IllegalInstruction()
+        EndIf
+      ElseIf n1 = 1 Then
+        ' 1NNN - Jump to address
+        PC = n4 + (n3 * 16) + (n2 * 256)
+      ElseIf n1 = 2 Then
+        ' 2NNN - Call subroutine
+        Stack.PushValue(chip8Stack, PC)
+        PC = n4 + (n3 * 16) + (n2 * 256)
+      ElseIf n1 = 3 Then
+        ' 3XNN - Increment PC by 2 if Vx == NN
+        If V[n2] = (n4 + (n3 * 16)) Then
+          PC = PC + 2
+        EndIf
+      ElseIf n1 = 4 Then
+        ' 4XNN - Increment PC by 2 if Vx != NN
+        If V[n2] <> (n4 + (n3 * 16)) Then
+          PC = PC + 2
+        EndIf
+      ElseIf n1 = 5 And n4 = 0 Then
+        ' 5XY0 - Increment PC by 2 if Vx == Vy
+        If V[n2] = V[n3] Then
+          PC = PC + 2
+        EndIf
+      ElseIf n1 = 6 Then
+        ' 6XNN - Set Vx to NN
+        V[n2] = n4 + (n3 * 16)
+      ElseIf n1 = 7 Then
+        ' 7XNN - Add NN to Vx without modifying the carry flag
+        V[n2] = Math.Remainder(V[n2] + (n4 + (n3 * 16)), 256)
+      ElseIf n1 = 8 Then
+        ' 8XY?
+        If n4 = 0 Then
+          ' 8XY0 - Set Vx to the value of Vy
+          ' Vx = Vy
+          V[n2] = V[n3]
+        ElseIf n4 = 1 Then
+          ' 8XY1 - Set Vx to the value of Vy OR Vx
+          ' Vx = Vx | Vy
+          arg1 = V[n2]
+          arg2 = V[n3]
+          BitwiseOR()
+          V[n2] = result
+        ElseIf n4 = 2 Then
+          ' 8XY2 - Set Vx to the value of Vy AND Vx
+          ' Vx = Vx & Vy
+          arg1 = V[n2]
+          arg2 = V[n3]
+          BitwiseAND()
+          V[n2] = result
+        ElseIf n4 = 3 Then
+          ' 8XY3 - Set Vx to the value of Vy XOR Vx
+          ' Vx = Vx ^ Vy
+          arg1 = V[n2]
+          arg2 = V[n3]
+          BitwiseXOR()
+          V[n2] = result
+        ElseIf n4 = 4 Then
+          ' 8XY4 - Adds Vy to Vx and if there's carry, sets Vf to 1. Otherwise, sets Vf to 0.
+          V[n2] = V[n2] + V[n3]
+          If V[n2] > 255 Then
+            V[15] = 1
+          Else
+            V[15] = 0
+          EndIf
+          V[n2] = Math.Remainder(V[n2], 256)
+        ElseIf n4 = 5 Then
+          ' 8XY5 - Substracts Vy from Vx and if an overflow occurs, sets Vf to 0. Otherwise, sets Vf to 1.
+          V[n2] = V[n2] - V[n3]
+          If V[n2] < 0 Then
+            V[15] = 0
+            V[n2] = V[n2] + 256
+          Else
+            V[15] = 1
+          EndIf
+        ElseIf n4 = 6 Then
+          ' 8XY6
+          ' Vf = Vx & 1
+          ' Vy = Vx >>= 1
+          V[15] = Math.Remainder(V[n2], 2)
+          V[n2] = Math.Floor(V[n2] / 2)
+          V[n3] = V[n2]
+        ElseIf n4 = 7 Then
+          ' 8XY7 - Stores (Vy - Vx) in Vx and if an overflow occurs, sets Vf to 0. Otherwise, sets Vf to 1.
+          V[n2] = V[n3] - V[n2]
+          If V[n2] < 0 Then
+            V[15] = 0
+            V[n2] = V[n2] + 256
+          Else
+            V[15] = 1
+          EndIf
+        ElseIf n4 = 14 Then
+          ' 8XY7
+          ' Vf = Vx >> 7
+          ' Vy = Vx <<= 1
+          V[15] = Math.Floor(V[n2] / 128)
+          V[n2] = Math.Remainder(V[n2] * 2, 256)
+          V[n3] = V[n2]
+        Else
+          IllegalInstruction()
+        EndIf
+      ElseIf n1 = 9 And n4 = 0 Then
+        ' 9XY0 - Increment PC by 2 if Vx != Vy
+        If V[n2] <> V[n3] Then
+          PC = PC + 2
+        EndIf
+      ElseIf n1 = 10 Then
+        ' ANNN - Sets memPt to NNN
+        memPt = n4 + (n3 * 16) + (n2 * 256)
+      ElseIf n1 = 11 Then
+        ' BNNN - Sets PC to V0 + NNN
+        PC = V[0] + n4 + (n3 * 16) + (n2 * 256)
+      ElseIf n1 = 12 Then
+        ' CXNN
+        ' Vx = rand() & NN
+        arg1 = Math.GetRandomNumber(255)
+        arg2 = n4 + (n3 * 16)
+        BitwiseAND()
+        V[n2] = result
+      ElseIf n1 = 13 Then
+        ' DXYN - Draw sprite which is 8px wide and (N+1)px long at  the display coordinate (Vx, Vy)
+        V[15] = 0
+        For y=0 To n4-1
+          rowData = memory[memPt+y]
+          For x=0 To 7
+            finalX = Math.Remainder(V[n2]+x, displayWidth)
+            finalY = Math.Remainder(V[n3]+y, displayHeight)
+            If (shouldWrap = 1) Or (finalX = V[n2]+x And finalY = V[n3]+y) Then
+              If Math.Floor(rowData / 128) = 1 Then
+                If display[finalX][finalY] = 1 Then
+                  V[15] = 1
+                  GraphicsWindow.BrushColor = colorOff
+                  display[finalX][finalY] = 0
+                Else
+                  GraphicsWindow.BrushColor = colorOn
+                  display[finalX][finalY] = 1
+                EndIf
+                GraphicsWindow.FillRectangle(finalX * displayMultiplier, finalY * displayMultiplier, displayMultiplier, displayMultiplier)
+              EndIf
+            EndIf
+            rowData = Math.Remainder(rowData * 2, 256)
+          EndFor
+        EndFor
+      ElseIf n1 = 14 Then
+        ' EX??
+        If n3 = 9 And n4 = 14 Then
+          ' EX9E - Increment PC by 2 if keys[Vx] is 1
+          If keys[V[n2]] = 1 Then
+            PC = PC + 2
+          EndIf
+        ElseIf n3 = 10 And n4 = 1 Then
+          ' EXA1 - Increment PC by 2 if keys[keymap[Vx]] is 0
+          If keys[V[n2]] = 0 Then
+            PC = PC + 2
+          EndIf
+        Else
+          IllegalInstruction()
+        EndIf
+      ElseIf n1 = 15 Then
+        ' FX??
+        If n3 = 0 And n4 = 7 Then
+          ' FX07 - Store the value of the delay timer into Vx
+          V[n2] = delayTimer
+        ElseIf n3 = 0 And n4 = 10 Then
+          ' FX0A - Wait until a key is pressed, then store this key into Vx
+          waitingForKey = n2 + 1
+          counter = 9999
+        ElseIf n3 = 1 And n4 = 5 Then
+          ' FX15 - Set the value of the delay timer to the value of Vx
+          delayTimer = V[n2]
+        ElseIf n3 = 1 And n4 = 8 Then
+          ' FX18 - Set the value of the sound timer to the value of Vx
+          soundTimer = V[n2]
+          If ENABLE_FAKE_SOUND Then
+            If soundTimer > 0 Then
+              colorOff = "white"
+              colorOn = "black"
+            Else
+              colorOff = "black"
+              colorOn = "white"
+            EndIf
+            RedrawScreen()
+          EndIf
+        ElseIf n3 = 1 And n4 = 14 Then
+          ' FX1E - Add the value of Vx to memPt
+          memPt = Math.Remainder(memPt + V[n2], 4096)
+        ElseIf n3 = 2 And n4 = 9 Then
+          ' FX29 - Set memPt to the address of the sprite for the character stored in Vx.
+          memPt = V[n2] * 5
+        ElseIf n3 = 3 And n4 = 3 Then
+          ' FX33 - Store the binary coded decimal for Vx at the address pointed by memPt.
+          memory[memPt] = Math.Floor(V[n2] / 100)
+          memory[Math.Remainder(memPt+1, 4096)] = Math.Floor(Math.Remainder(V[n2], 100) / 10)
+          memory[Math.Remainder(memPt+2, 4096)] = Math.Remainder(V[n2], 10)
+        ElseIf n3 = 5 And n4 = 5 Then
+          ' FX55 - Store all registers from V0 to Vx (including Vx) in the memory location pointed by memPt.
+          ' memPt is not incremented after this instruction.
+          _memPt = memPt
+          For i=0 To Math.Min(15, n2)
+            memory[_memPt] = V[i]
+            _memPt = Math.Remainder(_memPt+1, 4096)
+          EndFor
+          If saveAndLoadModifiesI = 1 Then
+            memPt = _memPt
+          EndIf
+        ElseIf n3 = 6 And n4 = 5 Then
+          ' FX65 - Load registers values for V0 to Vx (including Vx) from the memory location pointed by memPt.
+          ' memPt is not incremented after this instruction.
+          _memPt = memPt
+          For i=0 To Math.Min(15, n2)
+            V[i] = memory[_memPt]
+            _memPt = Math.Remainder(_memPt+1, 4096)
+          EndFor
+          If saveAndLoadModifiesI = 1 Then
+            memPt = _memPt
+          EndIf
+        Else
+          IllegalInstruction()
+        EndIf
+      Else
+        IllegalInstruction()
+      EndIf
+    EndFor
+  EndIf
+  Timer.Resume()
+EndSub
+
+Initialize()
