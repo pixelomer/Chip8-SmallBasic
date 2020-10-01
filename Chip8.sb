@@ -718,9 +718,8 @@ Sub OnTimerTick
           memory[Math.Remainder(memPt+2, 4096)] = Math.Remainder(V[n2], 10)
         ElseIf n3 = 5 And n4 = 5 Then
           ' FX55 - Store all registers from V0 to Vx (including Vx) in the memory location pointed by memPt.
-          ' memPt is not incremented after this instruction.
           _memPt = memPt
-          For i=0 To Math.Min(15, n2)
+          For i=0 To n2
             memory[_memPt] = V[i]
             _memPt = Math.Remainder(_memPt+1, 4096)
           EndFor
@@ -729,9 +728,8 @@ Sub OnTimerTick
           EndIf
         ElseIf n3 = 6 And n4 = 5 Then
           ' FX65 - Load registers values for V0 to Vx (including Vx) from the memory location pointed by memPt.
-          ' memPt is not incremented after this instruction.
           _memPt = memPt
-          For i=0 To Math.Min(15, n2)
+          For i=0 To n2
             V[i] = memory[_memPt]
             _memPt = Math.Remainder(_memPt+1, 4096)
           EndFor
