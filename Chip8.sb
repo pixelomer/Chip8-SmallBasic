@@ -232,12 +232,8 @@ Sub BitwiseOR
       _result = _result + _x
     EndIf
     _x = _x * 2
-    arg1 = _input1
-    ShiftRight()
-    _input1 = result
-    arg1 = _input2
-    ShiftRight()
-    _input2 = result
+    _input1 = Math.Floor(_input1 / 2)
+    _input2 = Math.Floor(_input2 / 2)
   EndWhile
   result = _result
 EndSub
@@ -256,12 +252,8 @@ Sub BitwiseXOR
       _result = _result + _x
     EndIf
     _x = _x * 2
-    arg1 = _input1
-    ShiftRight()
-    _input1 = result
-    arg1 = _input2
-    ShiftRight()
-    _input2 = result
+    _input1 = Math.Floor(_input1 / 2)
+    _input2 = Math.Floor(_input2 / 2)
   EndWhile
   result = _result
 EndSub
@@ -280,24 +272,10 @@ Sub BitwiseAND
       _result = _result + _x
     EndIf
     _x = _x * 2
-    arg1 = _input1
-    ShiftRight()
-    _input1 = result
-    arg1 = _input2
-    ShiftRight()
-    _input2 = result
+    _input1 = Math.Floor(_input1 / 2)
+    _input2 = Math.Floor(_input2 / 2)
   EndWhile
   result = _result
-EndSub
-
-' 00100101 --> 01001010
-Sub ShiftLeft
-  result = arg1 * 2
-EndSub
-
-' 00100101 --> 00010010
-Sub ShiftRight
-  result = Math.Floor(arg1 / 2)
 EndSub
 
 ' Shows an error and ends the program
@@ -323,9 +301,7 @@ Sub Make8BitArray
     Else
       resultArray[i] = 0
     EndIf
-    arg1 = _input
-    ShiftLeft()
-    _input = result
+    _input = _input * 2
   EndFor
 EndSub
 
